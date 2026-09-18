@@ -1,0 +1,23 @@
+node_modules/
+dist/
+server/dist/
+server/node_modules/
+
+# secrets -- never commit real API keys/tokens
+.env
+.env.*
+!.env.example
+!server/.env.example
+
+# local SQLite ledger -- this is real earnings data, don't publish it
+server/*.sqlite3
+server/*.sqlite3-shm
+server/*.sqlite3-wal
+
+*.log
+.DS_Store
+
+# leftover scaffold/build zip artifacts, not source
+surveyflow-deploy.zip
+zioICB2H
+zisay9fW

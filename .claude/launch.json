@@ -1,0 +1,45 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "server",
+        "run",
+        "dev"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "bedroom-bliss-store",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8877",
+        "--directory",
+        "C:/Users/pc/Documents/bedroom-bliss-store/public"
+      ],
+      "port": 8877
+    },
+    {
+      "name": "bedroom-bliss-checkout-api",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Users/pc/Documents/bedroom-bliss-store/backend/server.py"
+      ],
+      "port": 4242
+    }
+  ]
+}
