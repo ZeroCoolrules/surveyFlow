@@ -16,7 +16,7 @@ app.use('/api', apiRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-const port = Number(process.env.PORT) || 8787;
+const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   console.log(`SurveyFlow API listening on :${port}`);
 });
