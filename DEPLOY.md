@@ -1,5 +1,64 @@
 # Deploying SurveyFlow to GoDaddy
 
+## Recommended for GoDaddy *shared* hosting: Appwrite backend + GoDaddy frontend
+
+Shared plans usually can't run a Node process, so the API runs as an **Appwrite Function** (`functions/api`)
+with its data in **Appwrite Databases**, and only the static frontend lives on GoDaddy. The old Express server in
+`server/` is kept for local dev and for hosts that can run Node; the function serves the same `/api/...` routes.
+
+### 1. Create the Appwrite project and link the CLI
+
+```bash
+npm install -g appwrite-cli
+appwrite login
+appwrite init project          # pick/create the project; note the project ID and region
+```
+
+Then open [appwrite.config.json](appwrite.config.json) and replace `<PROJECT_ID>` and `<REGION>`
+(the endpoint must be your project's regional endpoint, e.g. `https://fra.cloud.appwrite.io/v1`).
+
+### 2. Set the admin token and deploy
+
+```bash
+cd functions/api
+cp .env.example .env           # set ADMIN_SETTINGS_TOKEN to a long random string
+cd ../..
+appwrite push tables           # creates the database + 4 tables
+appwrite push functions --function-id api --with-variables --activate
+```
+
+### 3. Get the API URL
+
+Appwrite Console → **Functions → surveyflow-api → Domains**. It looks like `https://<id>.<region>.appwrite.run`.
+Check it: `curl https://<that-domain>/health` should return `{"ok":true}`.
+
+### 4. Build the frontend against it and upload to GoDaddy
+
+Create `.env.production` in the project root:
+
+```
+VITE_API_BASE_URL=https://<that-domain>
+```
+
+```bash
+npm run build
+```
+
+Upload the **contents** of `dist/` into `public_html` (or your addon domain's folder) via cPanel File Manager.
+
+### 5. Finish in the app
+
+- Open your site, go to **Settings**, enter the admin token, then paste your CPX / BitLabs keys.
+- In each network's dashboard set the postback URL to
+  `https://<that-domain>/api/webhooks/cpx` and `https://<that-domain>/api/webhooks/bitlabs`.
+
+Notes: function timeout is 30s; the database has no public permissions, so only the function (via its own
+key) can read or write it. Back up the `completions` table periodically. It is your earnings ledger.
+
+---
+
+## Alternative: run the Node server on GoDaddy itself
+
 SurveyFlow is two separate pieces that both need to go live:
 
 1. **Frontend** — static files (`npm run build` output) → served from `public_html`

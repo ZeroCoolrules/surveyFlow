@@ -1,0 +1,69 @@
+{
+  "projectId": "<PROJECT_ID>",
+  "projectName": "SurveyFlow",
+  "endpoint": "https://<REGION>.cloud.appwrite.io/v1",
+  "tablesDB": [
+    {
+      "$id": "surveyflow",
+      "name": "surveyflow",
+      "enabled": true
+    }
+  ],
+  "tables": [
+    {
+      "$id": "users",
+      "databaseId": "surveyflow",
+      "name": "users",
+      "enabled": true,
+      "rowSecurity": false,
+      "$permissions": [],
+      "columns": [{ "key": "email", "type": "varchar", "required": true, "size": 255 }],
+      "indexes": [{ "key": "idx_email", "type": "unique", "columns": ["email"] }]
+    },
+    {
+      "$id": "completions",
+      "databaseId": "surveyflow",
+      "name": "completions",
+      "enabled": true,
+      "rowSecurity": false,
+      "$permissions": [],
+      "columns": [
+        { "key": "userId", "type": "varchar", "required": true, "size": 64 },
+        { "key": "network", "type": "varchar", "required": true, "size": 32 },
+        { "key": "offerId", "type": "varchar", "required": false, "size": 128 },
+        { "key": "transactionId", "type": "varchar", "required": true, "size": 128 },
+        { "key": "rewardCents", "type": "integer", "required": true },
+        { "key": "status", "type": "varchar", "required": true, "size": 16 },
+        { "key": "raw", "type": "text", "required": false }
+      ],
+      "indexes": [{ "key": "idx_user", "type": "key", "columns": ["userId"] }]
+    },
+    {
+      "$id": "payout_requests",
+      "databaseId": "surveyflow",
+      "name": "payout_requests",
+      "enabled": true,
+      "rowSecurity": false,
+      "$permissions": [],
+      "columns": [
+        { "key": "userId", "type": "varchar", "required": true, "size": 64 },
+        { "key": "amountCents", "type": "integer", "required": true },
+        { "key": "status", "type": "varchar", "required": true, "size": 16 }
+      ],
+      "indexes": [{ "key": "idx_user", "type": "key", "columns": ["userId"] }]
+    },
+    {
+      "$id": "settings",
+      "databaseId": "surveyflow",
+      "name": "settings",
+      "enabled": true,
+      "rowSecurity": false,
+      "$permissions": [],
+      "columns": [{ "key": "value", "type": "text", "required": true }],
+      "indexes": []
+    }
+  ],
+  "includes": {
+    "functions": "appwrite/functions.json"
+  }
+}

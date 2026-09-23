@@ -1,0 +1,18 @@
+[
+  {
+    "$id": "api",
+    "name": "surveyflow-api",
+    "enabled": true,
+    "logging": true,
+    "runtime": "node-22",
+    "execute": ["any"],
+    "scopes": ["rows.read", "rows.write"],
+    "events": [],
+    "schedule": "",
+    "timeout": 30,
+    "entrypoint": "src/main.js",
+    "commands": "npm install",
+    "ignore": "node_modules\n.env",
+    "path": "../functions/api"
+  }
+]
