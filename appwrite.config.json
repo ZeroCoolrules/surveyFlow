@@ -1,7 +1,7 @@
 {
-  "projectId": "<PROJECT_ID>",
-  "projectName": "SurveyFlow",
-  "endpoint": "https://<REGION>.cloud.appwrite.io/v1",
+  "projectId": "6ab4037200391cc196bb",
+  "projectName": "PassiveIn",
+  "endpoint": "https://nyc.cloud.appwrite.io/v1",
   "tablesDB": [
     {
       "$id": "surveyflow",
