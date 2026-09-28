@@ -8,6 +8,7 @@ import { TaskOrganizer } from '@/sections/TaskOrganizer';
 import { FormAssistant } from '@/sections/FormAssistant';
 import { SurveyCreator } from '@/sections/SurveyCreator';
 import { Settings } from '@/sections/Settings';
+import { SurveyComplete } from '@/sections/SurveyComplete';
 import { Footer } from '@/sections/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,8 +45,10 @@ function SignInBar({ userId, signIn, loading, error }: ReturnType<typeof useIden
 function App() {
   const identity = useIdentity();
   const { userId } = identity;
+  const isSurveyComplete = window.location.pathname.replace(/\/+$/, '') === '/survey-complete';
 
   useEffect(() => {
+    if (isSurveyComplete) return;
     // Initialize smooth scroll behavior
     ScrollTrigger.defaults({
       markers: false,
@@ -57,7 +60,11 @@ function App() {
     return () => {
       ScrollTrigger.getAll().forEach(trigger => trigger.kill());
     };
-  }, []);
+  }, [isSurveyComplete]);
+
+  if (isSurveyComplete) {
+    return <SurveyComplete />;
+  }
 
   return (
     <div className="min-h-screen bg-brand-dark text-white overflow-x-hidden">
