@@ -57,8 +57,13 @@ export default async ({ req, res, log, error }) => {
     }
 
     /* ---- opportunities ---- */
+    const networkCtx = {
+      ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || undefined,
+      userAgent: req.headers['user-agent'],
+    };
+
     if ((m = path.match(/^\/api\/opportunities\/([^/]+)$/)) && req.method === 'GET') {
-      const offers = await fetchLiveOffers(db, m[1], log);
+      const offers = await fetchLiveOffers(db, m[1], log, networkCtx);
       const networksConfigured =
         offers.length > 0 ||
         Boolean(
@@ -70,7 +75,7 @@ export default async ({ req, res, log, error }) => {
     }
 
     if ((m = path.match(/^\/api\/opportunities\/([^/]+)\/rank$/)) && req.method === 'POST') {
-      const offers = await fetchLiveOffers(db, m[1], log);
+      const offers = await fetchLiveOffers(db, m[1], log, networkCtx);
       const ranked = await rankOffers(db, offers, req.bodyJson?.interests ?? []);
       return json({ ranked });
     }

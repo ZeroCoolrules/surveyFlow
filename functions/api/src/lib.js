@@ -38,6 +38,7 @@ export const SETTINGS_KEYS = [
   'CPX_APP_ID',
   'CPX_SECURE_HASH',
   'CPX_POSTBACK_SECRET',
+  'CPX_STATISTICS_API_KEY',
   'BITLABS_API_TOKEN',
   'BITLABS_POSTBACK_SECRET',
   'ADGATE_WALL_CODE',
@@ -125,27 +126,54 @@ export async function recordCompletion(db, c, { updateOnConflict }) {
 
 /* ---------- survey networks ---------- */
 
-export async function fetchCpxOffers(db, userId) {
+/**
+ * CPX's live offer API: https://live-api.cpx-research.com/api/get-surveys.php
+ * Per their docs, refresh at most every 120s and don't cache longer than that.
+ * ip_user is REQUIRED -- without it CPX returns count_surveys:0 with a hint
+ * message instead of an error, so it silently looks like "no surveys".
+ */
+export async function fetchCpxOffers(db, userId, ctx = {}) {
   const appId = await getSetting(db, 'CPX_APP_ID');
   const secureHash = await getSetting(db, 'CPX_SECURE_HASH');
-  if (!appId || !secureHash) return [];
+  if (!appId || !secureHash || !ctx.ip) return [];
 
   const hash = crypto.createHash('md5').update(`${userId}-${secureHash}`).digest('hex');
-  const url = `https://offers.cpx-research.com/index.php?app_id=${appId}&ext_user_id=${encodeURIComponent(userId)}&secure_hash=${hash}&format=json`;
-  const res = await fetch(url);
+  const params = new URLSearchParams({
+    app_id: appId,
+    ext_user_id: userId,
+    output_method: 'api',
+    limit: '20',
+    ip_user: ctx.ip,
+    secure_hash: hash,
+  });
+  if (ctx.userAgent) params.set('user_agent', ctx.userAgent);
+
+  const res = await fetch(`https://live-api.cpx-research.com/api/get-surveys.php?${params}`);
   if (!res.ok) throw new Error(`CPX offer fetch failed: ${res.status}`);
   const data = await res.json();
+  if (data.status !== 'success') throw new Error(`CPX API error: ${JSON.stringify(data)}`);
 
-  return (data.offers ?? []).map((o) => ({
-    network: 'cpx',
-    externalOfferId: String(o.offer_id),
-    title: o.title ?? 'CPX Survey',
-    description: o.title_short ?? '',
-    rewardCents: Math.round(parseFloat(o.payout ?? '0') * 100),
-    estimatedMinutes: o.loi ? Math.round(parseFloat(o.loi)) : null,
-    category: o.category ?? 'Survey',
-    clickUrl: o.link,
-  }));
+  return (data.surveys ?? []).map((o) => {
+    // "payout" is the user-facing reward per CPX's docs, but it reads 0.00 for
+    // every survey until currency settings are configured in the CPX publisher
+    // dashboard. Fall back to payout_publisher_usd (a real, nonzero figure)
+    // rather than show $0.00 everywhere -- revisit once currency is configured.
+    const payout = parseFloat(o.payout ?? '0');
+    const reward = payout > 0 ? payout : parseFloat(o.payout_publisher_usd ?? '0');
+    return {
+      network: 'cpx',
+      externalOfferId: String(o.id),
+      title: o.top === 1 ? 'CPX Survey (Top Rated)' : 'CPX Survey',
+      description:
+        o.type === 'need_qualification'
+          ? 'May ask a few qualifying questions before the survey starts.'
+          : 'Ready to start immediately.',
+      rewardCents: Math.round(reward * 100),
+      estimatedMinutes: o.loi ? Math.round(parseFloat(o.loi)) : null,
+      category: o.category || 'Survey',
+      clickUrl: o.href_new || o.href,
+    };
+  });
 }
 
 export async function fetchBitlabsOffers(db, userId) {
@@ -170,9 +198,9 @@ export async function fetchBitlabsOffers(db, userId) {
   }));
 }
 
-export async function fetchLiveOffers(db, userId, log) {
+export async function fetchLiveOffers(db, userId, log, ctx = {}) {
   const [cpx, bitlabs] = await Promise.all([
-    fetchCpxOffers(db, userId).catch((err) => (log(`[cpx] ${err.message}`), [])),
+    fetchCpxOffers(db, userId, ctx).catch((err) => (log(`[cpx] ${err.message}`), [])),
     fetchBitlabsOffers(db, userId).catch((err) => (log(`[bitlabs] ${err.message}`), [])),
   ]);
   return [...cpx, ...bitlabs];

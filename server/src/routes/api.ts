@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { randomUUID } from 'crypto';
 import { db } from '../db/index.js';
 import { fetchLiveOffers } from '../lib/networks.js';
@@ -19,10 +19,18 @@ apiRouter.post('/users', (req, res) => {
   res.status(201).json({ id, email });
 });
 
+function networkCtx(req: Request) {
+  const forwarded = (req.headers['x-forwarded-for'] as string) || '';
+  return {
+    ip: forwarded.split(',')[0].trim() || req.ip,
+    userAgent: req.headers['user-agent'],
+  };
+}
+
 /** Live opportunities pulled from configured survey networks (empty until API keys are set). */
 apiRouter.get('/opportunities/:userId', async (req, res) => {
   try {
-    const offers = await fetchLiveOffers(req.params.userId);
+    const offers = await fetchLiveOffers(req.params.userId, networkCtx(req));
     res.json({ offers, networksConfigured: offers.length > 0 || hasAnyNetworkConfigured() });
   } catch (err) {
     console.error(err);
@@ -34,7 +42,7 @@ apiRouter.get('/opportunities/:userId', async (req, res) => {
 apiRouter.post('/opportunities/:userId/rank', async (req, res) => {
   const { interests } = req.body as { interests?: string[] };
   try {
-    const offers = await fetchLiveOffers(req.params.userId);
+    const offers = await fetchLiveOffers(req.params.userId, networkCtx(req));
     const ranked = await rankOpportunitiesForUser(offers, interests ?? []);
     res.json({ ranked });
   } catch (err) {

@@ -14,6 +14,7 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; help?
       { key: 'CPX_APP_ID', label: 'App ID' },
       { key: 'CPX_SECURE_HASH', label: 'Secure Hash' },
       { key: 'CPX_POSTBACK_SECRET', label: 'Postback Secret', help: 'From CPX dashboard, used to verify their webhook.' },
+      { key: 'CPX_STATISTICS_API_KEY', label: 'Statistics API Key', help: 'From CPX dashboard → API, for the sales/completes/transaction-lookup endpoints.' },
     ],
   },
   {
