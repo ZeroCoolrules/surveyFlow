@@ -1,0 +1,42 @@
+services:
+  # ── Frontend (Vite dev server) ──────────────────────────────────────
+  web:
+    image: node:22
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "3000:5173"
+    environment:
+      - VITE_API_BASE_URL=https://8000-${BASE44_PUBLIC_HOST_SUFFIX}
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    command: ["sh", "-ec", "npm ci && exec npx vite --host 0.0.0.0"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # ── Backend (Express + node:sqlite) ─────────────────────────────────
+  api:
+    image: node:22
+    working_dir: /app/server
+    volumes:
+      - ./:/app
+    ports:
+      - "8000:8787"
+    environment:
+      - PORT=8787
+    command: ["sh", "-ec", "npm ci && exec npx tsx watch src/index.ts"]
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
