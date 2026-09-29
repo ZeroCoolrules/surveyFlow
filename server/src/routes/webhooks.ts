@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { db } from '../db/index.js';
 import { verifyCpxPostback } from '../lib/networks.js';
 import { getSetting } from '../lib/settings.js';
+import { verifyWebhookSignature } from '../lib/paypal.js';
 
 export const webhooksRouter = Router();
 
@@ -67,4 +68,39 @@ webhooksRouter.get('/bitlabs', (req, res) => {
   });
 
   res.send('OK');
+});
+
+/**
+ * PayPal Payouts webhook: the only thing that can mark a payout "paid".
+ * Register this URL as an event subscription on a Webhook in the PayPal
+ * developer dashboard for the PAYMENT.PAYOUTS-ITEM.* events.
+ */
+webhooksRouter.post('/paypal', async (req, res) => {
+  const verified = await verifyWebhookSignature(req.headers as Record<string, unknown>, req.body);
+  if (!verified) return res.status(403).json({ error: 'signature verification failed' });
+
+  const event = req.body as { event_type?: string; resource?: { payout_item_id?: string; errors?: { name?: string } } };
+  const itemId = event.resource?.payout_item_id;
+  const eventType = event.event_type;
+  if (!itemId || !eventType) return res.json({ ok: true });
+
+  const row = db.prepare('SELECT id FROM payout_requests WHERE provider_item_id = ?').get(itemId) as { id: string } | undefined;
+  if (!row) return res.json({ ok: true });
+
+  const statusMap: Record<string, 'paid' | 'failed'> = {
+    'PAYMENT.PAYOUTS-ITEM.SUCCEEDED': 'paid',
+    'PAYMENT.PAYOUTS-ITEM.FAILED': 'failed',
+    'PAYMENT.PAYOUTS-ITEM.DENIED': 'failed',
+    'PAYMENT.PAYOUTS-ITEM.RETURNED': 'failed',
+    'PAYMENT.PAYOUTS-ITEM.BLOCKED': 'failed',
+  };
+  const newStatus = statusMap[eventType];
+  if (!newStatus) return res.json({ ok: true });
+
+  db.prepare('UPDATE payout_requests SET status = ?, failure_reason = ?, processed_at = datetime(\'now\') WHERE id = ?').run(
+    newStatus,
+    newStatus === 'failed' ? event.resource?.errors?.name ?? eventType : null,
+    row.id
+  );
+  res.json({ ok: true });
 });

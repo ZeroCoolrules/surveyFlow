@@ -14,6 +14,7 @@ import {
   verifyCpxPostback,
   rankOffers,
 } from './lib.js';
+import { sendPayout, verifyWebhookSignature } from './paypal.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -97,7 +98,9 @@ export default async ({ req, res, log, error }) => {
 
     if ((m = path.match(/^\/api\/payouts\/([^/]+)$/)) && req.method === 'POST') {
       const amountCents = req.bodyJson?.amountCents;
+      const payoutEmail = req.bodyJson?.payoutEmail?.trim();
       if (!Number.isInteger(amountCents) || amountCents <= 0) return json({ error: 'invalid amount' }, 400);
+      if (!payoutEmail || !payoutEmail.includes('@')) return json({ error: 'valid payoutEmail required' }, 400);
 
       const completions = await listAll(db, T.completions, [Query.equal('userId', m[1]), Query.equal('status', 'confirmed')]);
       const payouts = await listAll(db, T.payouts, [Query.equal('userId', m[1]), Query.notEqual('status', 'failed')]);
@@ -105,12 +108,13 @@ export default async ({ req, res, log, error }) => {
         completions.reduce((s, r) => s + r.rewardCents, 0) - payouts.reduce((s, r) => s + r.amountCents, 0);
       if (amountCents > available) return json({ error: 'insufficient balance', available }, 400);
 
-      // No payment processor is wired up yet -- this records the request only.
+      // Records the request only -- an admin has to trigger the actual PayPal
+      // send (see /api/admin/payouts/:id/send). Nothing here moves money.
       const row = await db.createRow({
         databaseId: DB_ID,
         tableId: T.payouts,
         rowId: ID.unique(),
-        data: { userId: m[1], amountCents, status: 'requested' },
+        data: { userId: m[1], amountCents, payoutEmail, status: 'requested' },
       });
       return json({ id: row.$id, status: 'requested', amountCents }, 201);
     }
@@ -157,6 +161,45 @@ export default async ({ req, res, log, error }) => {
       return text('OK');
     }
 
+    /* ---- PayPal webhook: the only thing that can mark a payout "paid" ---- */
+    if (path === '/api/webhooks/paypal' && req.method === 'POST') {
+      const verified = await verifyWebhookSignature(db, req.headers, req.bodyJson);
+      if (!verified) return json({ error: 'signature verification failed' }, 403);
+
+      const event = req.bodyJson;
+      const itemId = event?.resource?.payout_item_id;
+      const eventType = event?.event_type;
+      if (!itemId || !eventType) return json({ ok: true }); // nothing actionable, ack anyway
+
+      const matches = await listAll(db, T.payouts, [Query.equal('providerItemId', itemId), Query.limit(1)]);
+      const row = matches[0];
+      if (!row) {
+        log(`[paypal webhook] no payout_request matches item ${itemId}`);
+        return json({ ok: true });
+      }
+
+      const statusMap = {
+        'PAYMENT.PAYOUTS-ITEM.SUCCEEDED': 'paid',
+        'PAYMENT.PAYOUTS-ITEM.FAILED': 'failed',
+        'PAYMENT.PAYOUTS-ITEM.DENIED': 'failed',
+        'PAYMENT.PAYOUTS-ITEM.RETURNED': 'failed',
+        'PAYMENT.PAYOUTS-ITEM.BLOCKED': 'failed',
+      };
+      const newStatus = statusMap[eventType];
+      if (!newStatus) return json({ ok: true }); // e.g. PENDING/UNCLAIMED -- no terminal status yet
+
+      await db.updateRow({
+        databaseId: DB_ID,
+        tableId: T.payouts,
+        rowId: row.$id,
+        data: {
+          status: newStatus,
+          failureReason: newStatus === 'failed' ? event.resource?.errors?.name || eventType : undefined,
+        },
+      });
+      return json({ ok: true });
+    }
+
     /* ---- admin settings (gated by ADMIN_SETTINGS_TOKEN function variable) ---- */
     if (path.startsWith('/api/admin/')) {
       const configured = process.env.ADMIN_SETTINGS_TOKEN;
@@ -176,6 +219,55 @@ export default async ({ req, res, log, error }) => {
         if (!SETTINGS_KEYS.includes(m[1])) return json({ error: `unknown setting key: ${m[1]}` }, 400);
         await setSetting(db, m[1], req.bodyJson?.value ?? '');
         return json({ ok: true });
+      }
+
+      if (path === '/api/admin/payouts' && req.method === 'GET') {
+        const rows = await listAll(db, T.payouts, [Query.orderDesc('$createdAt')]);
+        return json({
+          payouts: rows.map((r) => ({
+            id: r.$id,
+            userId: r.userId,
+            amountCents: r.amountCents,
+            payoutEmail: r.payoutEmail,
+            status: r.status,
+            providerBatchId: r.providerBatchId,
+            failureReason: r.failureReason,
+            createdAt: r.$createdAt,
+          })),
+        });
+      }
+
+      // Deliberately admin-only and one-request-at-a-time: sending money should
+      // stay a decision a human makes, not something that fires automatically.
+      if ((m = path.match(/^\/api\/admin\/payouts\/([^/]+)\/send$/)) && req.method === 'POST') {
+        const row = await db.getRow({ databaseId: DB_ID, tableId: T.payouts, rowId: m[1] }).catch(() => null);
+        if (!row) return json({ error: 'payout request not found' }, 404);
+        if (row.status !== 'requested') return json({ error: `payout is already ${row.status}` }, 400);
+
+        try {
+          const result = await sendPayout(db, {
+            payoutRequestId: row.$id,
+            email: row.payoutEmail,
+            amountCents: row.amountCents,
+            note: 'SurveyFlow earnings payout',
+          });
+          await db.updateRow({
+            databaseId: DB_ID,
+            tableId: T.payouts,
+            rowId: row.$id,
+            data: { status: 'processing', providerBatchId: result.batchId, providerItemId: result.itemId },
+          });
+          return json({ ok: true, status: 'processing', ...result });
+        } catch (err) {
+          await db.updateRow({
+            databaseId: DB_ID,
+            tableId: T.payouts,
+            rowId: row.$id,
+            data: { failureReason: err.message },
+          });
+          error(`payout send failed for ${row.$id}: ${err.message}`);
+          return json({ error: 'PayPal send failed', detail: err.message }, 502);
+        }
       }
     }
 

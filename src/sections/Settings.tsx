@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Lock, Save, CheckCircle2, Circle, KeyRound } from 'lucide-react';
+import { Lock, Save, CheckCircle2, Circle, KeyRound, Send, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getAdminSettings, setAdminSetting, type SettingStatus } from '@/lib/api';
+import {
+  getAdminSettings,
+  setAdminSetting,
+  getAdminPayouts,
+  sendAdminPayout,
+  type SettingStatus,
+  type PayoutRequest,
+} from '@/lib/api';
 
 const ADMIN_TOKEN_KEY = 'surveyflow-admin-token';
 
@@ -21,7 +28,8 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; help?
     title: 'BitLabs',
     fields: [
       { key: 'BITLABS_API_TOKEN', label: 'API Token' },
-      { key: 'BITLABS_POSTBACK_SECRET', label: 'Postback Secret', help: 'Shared secret you set in BitLabs\' postback URL config.' },
+      { key: 'BITLABS_SECRET_KEY', label: 'Secret Key', help: 'Stored for reference -- not yet wired into a code path.' },
+      { key: 'BITLABS_POSTBACK_SECRET', label: 'Server-to-Server Key', help: "Used to verify BitLabs' postback." },
     ],
   },
   {
@@ -35,6 +43,15 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; help?
   {
     title: 'AI Ranking',
     fields: [{ key: 'ANTHROPIC_API_KEY', label: 'Anthropic API Key', help: 'Optional — powers the "AI Rank" button on Opportunities.' }],
+  },
+  {
+    title: 'PayPal Payouts',
+    fields: [
+      { key: 'PAYPAL_CLIENT_ID', label: 'Client ID', help: 'From developer.paypal.com → your app.' },
+      { key: 'PAYPAL_CLIENT_SECRET', label: 'Client Secret' },
+      { key: 'PAYPAL_MODE', label: 'Mode', help: '"sandbox" (default, test money) or "live" (real money).' },
+      { key: 'PAYPAL_WEBHOOK_ID', label: 'Webhook ID', help: 'From the Webhook you create in the PayPal dashboard — required to trust payout confirmations.' },
+    ],
   },
 ];
 
@@ -149,6 +166,96 @@ function SettingField({
   );
 }
 
+function centsToDollars(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
+function PayoutsPanel({ adminToken }: { adminToken: string }) {
+  const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const res = await getAdminPayouts(adminToken);
+      setPayouts(res.payouts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load payouts');
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, [adminToken]);
+
+  const send = async (id: string) => {
+    setSendingId(id);
+    setError(null);
+    try {
+      await sendAdminPayout(adminToken, id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Send failed');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const statusColor: Record<string, string> = {
+    requested: 'text-yellow-400',
+    processing: 'text-blue-400',
+    paid: 'text-green-400',
+    failed: 'text-red-400',
+  };
+
+  return (
+    <Card className="glass-card p-6 mt-8">
+      <div className="flex items-center gap-2 mb-2">
+        <Send className="w-5 h-5 text-brand-teal" />
+        <h3 className="text-base font-heading font-semibold text-white">Payout Requests</h3>
+      </div>
+      <p className="text-xs text-white/40 mb-4">
+        Sending is manual and one request at a time -- nothing here moves money automatically. A row only flips to
+        "paid" once PayPal's webhook confirms it, not when you click Send.
+      </p>
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start gap-2 text-sm text-red-300">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          {error}
+        </div>
+      )}
+      {payouts.length === 0 ? (
+        <p className="text-sm text-white/40">No payout requests yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {payouts.map((p) => (
+            <div key={p.id} className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0 text-sm">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-medium">${centsToDollars(p.amountCents)}</span>
+                  <span className={statusColor[p.status] ?? 'text-white/60'}>{p.status}</span>
+                </div>
+                <p className="text-white/40 truncate">{p.payoutEmail}</p>
+                {p.failureReason && <p className="text-red-400 text-xs truncate">{p.failureReason}</p>}
+              </div>
+              {p.status === 'requested' && (
+                <Button
+                  size="sm"
+                  onClick={() => send(p.id)}
+                  disabled={sendingId === p.id}
+                  className="bg-gradient-to-r from-brand-purple to-brand-blue text-white shrink-0"
+                >
+                  {sendingId === p.id ? 'Sending...' : 'Send via PayPal'}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function Settings() {
   const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem(ADMIN_TOKEN_KEY));
   const [settings, setSettings] = useState<SettingStatus[]>([]);
@@ -206,6 +313,8 @@ export function Settings() {
             ))}
           </div>
         )}
+
+        {adminToken && <PayoutsPanel adminToken={adminToken} />}
       </div>
     </section>
   );

@@ -49,11 +49,17 @@ CREATE TABLE IF NOT EXISTS completions (
   UNIQUE(network, external_transaction_id)
 );
 
+-- status: requested (created) -> processing (sent to PayPal, awaiting confirmation)
+-- -> paid/failed (confirmed by PayPal's webhook -- never set by the initiating request).
 CREATE TABLE IF NOT EXISTS payout_requests (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   amount_cents INTEGER NOT NULL,
+  payout_email TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'processing', 'paid', 'failed')),
+  provider_batch_id TEXT,
+  provider_item_id TEXT,
+  failure_reason TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   processed_at TEXT
 );

@@ -59,10 +59,34 @@ export function getEarnings(userId: string) {
   return http<{ totalCents: number; entries: EarningsEntry[] }>(`/api/earnings/${userId}`);
 }
 
-export function requestPayout(userId: string, amountCents: number) {
+export function requestPayout(userId: string, amountCents: number, payoutEmail: string) {
   return http<{ id: string; status: string; amountCents: number }>(`/api/payouts/${userId}`, {
     method: 'POST',
-    body: JSON.stringify({ amountCents }),
+    body: JSON.stringify({ amountCents, payoutEmail }),
+  });
+}
+
+export interface PayoutRequest {
+  id: string;
+  userId: string;
+  amountCents: number;
+  payoutEmail: string;
+  status: 'requested' | 'processing' | 'paid' | 'failed';
+  providerBatchId: string | null;
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export function getAdminPayouts(adminToken: string) {
+  return http<{ payouts: PayoutRequest[] }>('/api/admin/payouts', {
+    headers: { 'x-admin-token': adminToken },
+  });
+}
+
+export function sendAdminPayout(adminToken: string, payoutId: string) {
+  return http<{ ok: true; status: string }>(`/api/admin/payouts/${payoutId}/send`, {
+    method: 'POST',
+    headers: { 'x-admin-token': adminToken },
   });
 }
 

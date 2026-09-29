@@ -7,10 +7,13 @@ import {
   TrendingUp,
   Wallet,
   Target,
-  Calendar
+  Calendar,
+  Send,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { getEarnings, type EarningsEntry } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { getEarnings, requestPayout, type EarningsEntry } from '@/lib/api';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -162,6 +165,76 @@ function computeStats(entries: EarningsEntry[]) {
     .reduce((sum, e) => sum + e.rewardCents, 0);
   const completedToday = confirmed.filter((e) => now - new Date(e.createdAt).getTime() <= day).length;
   return { totalCents, weeklyCents, monthlyCents, completedToday };
+}
+
+function RequestPayoutCard({ userId, availableCents }: { userId: string | null; availableCents: number }) {
+  const [amount, setAmount] = useState('');
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  const submit = async () => {
+    if (!userId) return;
+    const amountCents = Math.round(parseFloat(amount) * 100);
+    if (!amountCents || amountCents <= 0) {
+      setMessage({ kind: 'error', text: 'Enter a valid amount.' });
+      return;
+    }
+    if (!email.includes('@')) {
+      setMessage({ kind: 'error', text: 'Enter your PayPal email.' });
+      return;
+    }
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      await requestPayout(userId, amountCents, email);
+      setMessage({ kind: 'ok', text: 'Payout requested. An admin still has to approve and send it -- this does not move money automatically.' });
+      setAmount('');
+    } catch (err) {
+      setMessage({ kind: 'error', text: err instanceof Error ? err.message : 'Request failed.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!userId) return null;
+
+  return (
+    <Card className="glass-card p-6 mt-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Send className="w-5 h-5 text-brand-teal" />
+        <h3 className="text-base font-heading font-semibold text-white">Request a Payout</h3>
+      </div>
+      <p className="text-sm text-white/60 mb-4">
+        Your confirmed balance is ${(availableCents / 100).toFixed(2)} (the server also subtracts any payouts you've
+        already requested when you submit). This creates a request only -- money is sent via PayPal after an admin
+        reviews and approves it.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-3">
+        <Input
+          type="number"
+          step="0.01"
+          placeholder="Amount (USD)"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="bg-white/5 border-white/20 text-white"
+        />
+        <Input
+          type="email"
+          placeholder="Your PayPal email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="bg-white/5 border-white/20 text-white"
+        />
+        <Button onClick={submit} disabled={submitting} className="bg-gradient-to-r from-brand-purple to-brand-blue text-white">
+          {submitting ? 'Requesting...' : 'Request'}
+        </Button>
+      </div>
+      {message && (
+        <p className={`text-sm mt-3 ${message.kind === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{message.text}</p>
+      )}
+    </Card>
+  );
 }
 
 export function HeroDashboard({ userId }: { userId: string | null }) {
@@ -359,6 +432,8 @@ export function HeroDashboard({ userId }: { userId: string | null }) {
             </div>
           )}
         </div>
+
+        <RequestPayoutCard userId={userId} availableCents={stats.totalCents} />
 
         {/* Quick Actions */}
         <div className="mt-8 flex flex-wrap justify-center gap-4">

@@ -68,8 +68,9 @@ apiRouter.get('/earnings/:userId', (req, res) => {
 });
 
 apiRouter.post('/payouts/:userId', (req, res) => {
-  const { amountCents } = req.body as { amountCents?: number };
+  const { amountCents, payoutEmail } = req.body as { amountCents?: number; payoutEmail?: string };
   if (!amountCents || amountCents <= 0) return res.status(400).json({ error: 'invalid amount' });
+  if (!payoutEmail || !payoutEmail.includes('@')) return res.status(400).json({ error: 'valid payoutEmail required' });
 
   const confirmed = db
     .prepare(`SELECT COALESCE(SUM(reward_cents), 0) as total FROM completions WHERE user_id = ? AND status = 'confirmed'`)
@@ -84,9 +85,14 @@ apiRouter.post('/payouts/:userId', (req, res) => {
   }
 
   const id = randomUUID();
-  db.prepare('INSERT INTO payout_requests (id, user_id, amount_cents) VALUES (?, ?, ?)').run(id, req.params.userId, amountCents);
-  // No payment processor is wired up yet -- this records the request only.
-  // Once you choose PayPal Payouts / Stripe Connect, mark it "processing" then "paid" here after the real transfer succeeds.
+  // Records the request only -- an admin has to trigger the actual PayPal send
+  // (see routes/admin.ts). Nothing in this handler moves money.
+  db.prepare('INSERT INTO payout_requests (id, user_id, amount_cents, payout_email) VALUES (?, ?, ?, ?)').run(
+    id,
+    req.params.userId,
+    amountCents,
+    payoutEmail
+  );
   res.status(201).json({ id, status: 'requested', amountCents });
 });
 

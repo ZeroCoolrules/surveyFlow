@@ -8,10 +8,15 @@ export const SETTINGS_KEYS = [
   'CPX_STATISTICS_API_KEY',
   'BITLABS_API_TOKEN',
   'BITLABS_POSTBACK_SECRET',
+  'BITLABS_SECRET_KEY',
   'ADGATE_WALL_CODE',
   'ADGATE_API_KEY',
   'ADGATE_POSTBACK_SECRET',
   'ANTHROPIC_API_KEY',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'PAYPAL_MODE', // 'sandbox' or 'live' -- defaults to sandbox if unset, see lib/paypal.ts
+  'PAYPAL_WEBHOOK_ID',
 ] as const;
 
 export type SettingKey = (typeof SETTINGS_KEYS)[number];

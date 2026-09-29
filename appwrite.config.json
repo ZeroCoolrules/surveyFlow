@@ -48,9 +48,16 @@
       "columns": [
         { "key": "userId", "type": "varchar", "required": true, "size": 64 },
         { "key": "amountCents", "type": "integer", "required": true },
-        { "key": "status", "type": "varchar", "required": true, "size": 16 }
+        { "key": "payoutEmail", "type": "varchar", "required": true, "size": 255 },
+        { "key": "status", "type": "varchar", "required": true, "size": 16 },
+        { "key": "providerBatchId", "type": "varchar", "required": false, "size": 128 },
+        { "key": "providerItemId", "type": "varchar", "required": false, "size": 128 },
+        { "key": "failureReason", "type": "text", "required": false }
       ],
-      "indexes": [{ "key": "idx_user", "type": "key", "columns": ["userId"] }]
+      "indexes": [
+        { "key": "idx_user", "type": "key", "columns": ["userId"] },
+        { "key": "idx_item", "type": "key", "columns": ["providerItemId"] }
+      ]
     },
     {
       "$id": "settings",
